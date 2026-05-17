@@ -70,14 +70,13 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
       }
 
       mutateVerge()
-      setTimeout(async () => {
-        invalidateClashConfig()
-        mutateVersion()
-        setChangingCore(null)
-      }, 500)
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      invalidateClashConfig()
+      mutateVersion()
     } catch (err) {
-      setChangingCore(null)
       showNotice.error(err)
+    } finally {
+      setChangingCore(null)
     }
   })
 
@@ -100,6 +99,7 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
       setUpgrading(true)
       await upgradeCore()
       setUpgrading(false)
+      mutateVersion()
       showNotice.success(
         t('settings.feedback.notifications.clash.versionUpdated'),
       )
@@ -117,7 +117,7 @@ export function ClashCoreViewer({ ref }: { ref?: Ref<DialogRef> }) {
     <BaseDialog
       open={open}
       title={
-        <Box display="flex" justifyContent="space-between">
+        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
           {t('settings.sections.clash.form.fields.clashCore')}
           <Box>
             <LoadingButton
