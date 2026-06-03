@@ -9,8 +9,22 @@ import AdmZip from 'adm-zip'
 import { glob } from 'glob'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { extract } from 'tar'
+import { ProxyAgent, setGlobalDispatcher } from 'undici'
 
 import { log_debug, log_error, log_info, log_success } from './utils.mjs'
+
+// Node's built-in fetch (undici) ignores the `agent` option used below; it only
+// honors a global dispatcher. Route fetch through the proxy when one is set so
+// downloads work behind a proxy (e.g. HTTP_PROXY=http://127.0.0.1:7890).
+const PROXY_URL =
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy ||
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy
+if (PROXY_URL) {
+  setGlobalDispatcher(new ProxyAgent(PROXY_URL))
+  log_info(`Using proxy for downloads: ${PROXY_URL}`)
+}
 
 /**
  * Prebuild script with optimization features:
