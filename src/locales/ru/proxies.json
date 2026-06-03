@@ -27,9 +27,16 @@
       "proxyCount": "Количество прокси",
       "delayCheckReset": "Сброс проверки задержки"
     },
+    "regexFilter": {
+      "title": "Regex Filter",
+      "description": "Only proxies whose names match the regex are available in this group.",
+      "placeholder": "Enter a regex expression",
+      "helper": "Matched proxies remain visible, and auto-select groups only choose from the matched proxies after delay checks."
+    },
     "tooltips": {
       "locate": "Местоположение",
       "delayCheck": "Проверка задержки",
+      "regexFilter": "Regex filter",
       "sortDefault": "Сортировать по умолчанию",
       "sortDelay": "Сортировать по задержке",
       "sortName": "Сортировать по названию",
@@ -43,7 +50,8 @@
     },
     "chain": {
       "header": "Цепочка прокси",
-      "empty": "Цепочка прокси не настроена",
+      "warning": "Цепочка прокси может значительно снизить скорость сети. Если у вас нет явной рабочей необходимости или вы не понимаете эту настройку, оставьте ее отключенной.",
+      "empty": "Цепочка прокси может значительно снизить скорость сети. Если у вас нет явной рабочей необходимости или вы не понимаете эту настройку, оставьте ее отключенной.",
       "instruction": "Нажимайте на узлы по порядку, чтобы добавить их в цепочку",
       "minimumNodes": "Для цепочки требуется минимум 2 узла",
       "minimumNodesHint": "Для цепочки требуется минимум 2 узла. Добавьте ещё один узел.",

@@ -175,11 +175,8 @@ pub(super) async fn init_verge_config() {
 
 pub(super) async fn init_service_manager() {
     clash_verge_service_ipc::set_config(Some(ServiceManager::config())).await;
-    if !is_service_ipc_path_exists() {
-        return;
-    }
-    if SERVICE_MANAGER.lock().await.init().await.is_ok() {
-        logging_error!(Type::Setup, SERVICE_MANAGER.lock().await.refresh().await);
+    if is_service_ipc_path_exists() && SERVICE_MANAGER.init().await.is_ok() {
+        logging_error!(Type::Setup, SERVICE_MANAGER.refresh().await);
     }
 }
 

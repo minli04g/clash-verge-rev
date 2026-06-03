@@ -27,9 +27,16 @@
       "proxyCount": "프록시 개수",
       "delayCheckReset": "고정 취소를 위한 지연 확인"
     },
+    "regexFilter": {
+      "title": "Regex Filter",
+      "description": "Only proxies whose names match the regex are available in this group.",
+      "placeholder": "Enter a regex expression",
+      "helper": "Matched proxies remain visible, and auto-select groups only choose from the matched proxies after delay checks."
+    },
     "tooltips": {
       "locate": "위치 찾기",
       "delayCheck": "지연 확인",
+      "regexFilter": "Regex filter",
       "sortDefault": "기본 정렬",
       "sortDelay": "지연으로 정렬",
       "sortName": "이름으로 정렬",
@@ -43,7 +50,8 @@
     },
     "chain": {
       "header": "체인 프록시 구성",
-      "empty": "구성된 프록시 체인이 없습니다",
+      "warning": "체인 프록시는 네트워크 속도를 크게 저하시킬 수 있습니다. 명확한 업무상 필요가 없거나 이 구성을 이해하지 못한다면 비활성화 상태로 두세요.",
+      "empty": "체인 프록시는 네트워크 속도를 크게 저하시킬 수 있습니다. 명확한 업무상 필요가 없거나 이 구성을 이해하지 못한다면 비활성화 상태로 두세요.",
       "instruction": "프록시 체인에 추가하려면 순서대로 노드를 클릭하세요",
       "minimumNodes": "체인 프록시는 최소 2개의 노드가 필요합니다",
       "minimumNodesHint": "체인 프록시는 최소 2개의 노드가 필요합니다. 하나 더 추가하세요.",
