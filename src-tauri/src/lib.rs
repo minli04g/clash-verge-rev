@@ -24,6 +24,7 @@ use tauri::{AppHandle, Manager as _};
 #[cfg(target_os = "macos")]
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt as _;
+use tauri_plugin_mihomo::RejectPolicy;
 
 pub static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
 /// Application initialization helper functions
@@ -58,6 +59,15 @@ mod app_init {
                 tauri_plugin_mihomo::Builder::new()
                     .protocol(tauri_plugin_mihomo::models::Protocol::LocalSocket)
                     .socket_path(crate::config::IClashTemp::guard_external_controller_ipc())
+                    .pool_config(
+                        tauri_plugin_mihomo::IpcPoolConfigBuilder::new()
+                            .min_connections(3)
+                            .max_connections(32)
+                            .idle_timeout(std::time::Duration::from_secs(60))
+                            .health_check_interval(std::time::Duration::from_secs(60))
+                            .reject_policy(RejectPolicy::Wait)
+                            .build(),
+                    )
                     .build(),
             );
 
@@ -131,8 +141,6 @@ mod app_init {
             cmd::open_logs_dir,
             cmd::open_web_url,
             cmd::open_core_dir,
-            cmd::open_app_log,
-            cmd::open_core_log,
             cmd::get_portable_flag,
             cmd::get_network_interfaces,
             cmd::get_system_hostname,
@@ -387,9 +395,14 @@ pub fn run() {
                 event_handlers::handle_reopen(has_visible_windows).await;
             });
         }
-        tauri::RunEvent::Exit => {
+        tauri::RunEvent::Exit => AsyncHandler::block_on(async {
+            // Windows session ending currently reaches Tao as WM_ENDSESSION and
+            // destroys the loop without a preventable ExitRequested event.
+            if !handle::Handle::global().is_exiting() {
+                feat::quit().await;
+            }
             logging!(info, Type::System, "Application exited");
-        }
+        }),
         #[allow(unused_variables)]
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             if module::lightweight::is_in_lightweight_mode() && !handle::Handle::global().is_exiting() {
@@ -397,7 +410,7 @@ pub fn run() {
             } else if code.is_none() {
                 api.prevent_exit();
                 if !handle::Handle::global().is_exiting() {
-                    AsyncHandler::spawn(|| async {
+                    AsyncHandler::block_on(async {
                         feat::quit().await;
                     });
                 }

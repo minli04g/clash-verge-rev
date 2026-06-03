@@ -1,35 +1,23 @@
-## v2.5.0
-
-> [!IMPORTANT]
-> 关于版本的说明：Clash Verge 版本号遵循 x.y.z：x 为重大架构变更，y 为功能新增，z 为 Bug 修复。
-
-- **Mihomo(Meta) 内核升级至 v1.19.24**
+## v2.5.2
 
 ### 🐞 修复问题
 
-- 修复系统代理关闭后在 PAC 模式下未完全关闭
-- 修复 macOS 开关代理时可能的卡死
-- 修复修改定时自动更新后记时未及时刷新
-- 修复 Linux 关闭 TUN 不立即生效
-- 修复系统代理关闭序列逻辑(防止快速退出时系统代理关闭状态没有保存)
-- 修复 Linux 快捷键映射错误
-- 修复 Linux Wayland 兼容性导致渲染错误 
-- 修复 Linux 边缘情况无法加载页面
+- macOS 托盘速率可能的样式错误
+- 修复订阅 TLS 1.0/1.1 等过旧协议时显示更明确错误原因
+- 修复 gzip 压缩订阅响应被当作无效 YAML 导致导入失败的问题
+- 修复订阅 URL 使用空密码 Basic Auth 时未发送认证信息的问题
+- Linux 托盘可能与其他 tauri 程序托盘冲突导致图标异常
 
-### ✨ 新增功能
+<details>
+<summary><strong> ✨ 新增功能 </strong></summary>
 
-- 订阅 QR code 分享
-- 新增 macOS 托盘速率显示
-- 快捷键操作通知操作结果
-- 软件自动更新(后台下载，下次启动自动安装)
+- 增加 TrustTunnel, OpenVPN, Tailscale, GostRelay 节点显示支持
 
-### 🚀 优化改进
+</details>
 
-- 优化 macOS 读取系统代理性能
-- 优化前端 CPU 性能
-- 更健壮的服务模式与边缘状况内核恢复
-- 优化白名单网络下的订阅 TLS 更新兼容性
+<details>
+<summary><strong> 🚀 优化改进 </strong></summary>
 
-### 👙 界面样式
+- 关闭 autofill 弹出窗口
 
-- 代理组实现 Sticky Scroll 效果
+</details>
