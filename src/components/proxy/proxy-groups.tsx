@@ -399,39 +399,49 @@ export const ProxyGroups = (props: Props) => {
       const regexRuleState = buildRegexRuleState(
         getGroupHeadState(groupName)?.regexFilter || '',
       )
+      const filterActive = regexRuleState.hasRule && regexRuleState.isValid
 
       debugLog(`[ProxyGroups] 找到代理数量: ${proxies.length}`)
-
-      const providers = new Set(
-        proxies.map((p) => p!.provider!).filter(Boolean),
-      )
-
-      if (providers.size) {
-        debugLog(`[ProxyGroups] 发现提供者，数量: ${providers.size}`)
-        Promise.allSettled(
-          [...providers].map((p) => healthcheckProxyProvider(p)),
-        ).then(() => {
-          debugLog(`[ProxyGroups] 提供者健康检查完成`)
-          onProxies()
-        })
-      }
-
-      const names = proxies.filter((p) => !p!.provider).map((p) => p!.name)
-      debugLog(`[ProxyGroups] 过滤后需要测试的代理数量: ${names.length}`)
 
       const url = delayManager.getUrl(groupName)
       debugLog(`[ProxyGroups] 测试URL: ${url}, 超时: ${timeout}ms`)
 
       try {
-        await Promise.race([
-          delayManager.checkListDelay(names, groupName, timeout),
-          delayGroup(groupName, url, timeout).then((result) => {
-            debugLog(
-              `[ProxyGroups] getGroupProxyDelays返回结果数量:`,
-              Object.keys(result || {}).length,
-            )
-          }), // 查询group delays 将清除fixed(不关注调用结果)
-        ])
+        if (filterActive) {
+          // 存在有效的正则过滤时，仅测试过滤后展示的节点，
+          // 避免 delayGroup / provider 健康检查触发整组或整 provider 的测速，
+          // 否则会把不符合正则的节点也测出来（URLTest/Fallback 还会据此重选 now）
+          const names = matchedProxies.map((p) => p.name)
+          debugLog(`[ProxyGroups] 过滤模式，仅测试 ${names.length} 个节点`)
+          await delayManager.checkListDelay(names, groupName, timeout)
+        } else {
+          const providers = new Set(
+            proxies.map((p) => p!.provider!).filter(Boolean),
+          )
+
+          if (providers.size) {
+            debugLog(`[ProxyGroups] 发现提供者，数量: ${providers.size}`)
+            Promise.allSettled(
+              [...providers].map((p) => healthcheckProxyProvider(p)),
+            ).then(() => {
+              debugLog(`[ProxyGroups] 提供者健康检查完成`)
+              onProxies()
+            })
+          }
+
+          const names = proxies.filter((p) => !p!.provider).map((p) => p!.name)
+          debugLog(`[ProxyGroups] 过滤后需要测试的代理数量: ${names.length}`)
+
+          await Promise.race([
+            delayManager.checkListDelay(names, groupName, timeout),
+            delayGroup(groupName, url, timeout).then((result) => {
+              debugLog(
+                `[ProxyGroups] getGroupProxyDelays返回结果数量:`,
+                Object.keys(result || {}).length,
+              )
+            }), // 查询group delays 将清除fixed(不关注调用结果)
+          ])
+        }
         debugLog(`[ProxyGroups] 延迟测试完成，组: ${groupName}`)
       } catch (error) {
         console.error(`[ProxyGroups] 延迟测试出错，组: ${groupName}`, error)
