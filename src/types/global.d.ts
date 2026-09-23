@@ -229,6 +229,7 @@ interface IProfileItem {
     name?: string
     now?: string
   }[]
+  regex_filters?: Record<string, string>
   extra?: {
     upload: number
     download: number

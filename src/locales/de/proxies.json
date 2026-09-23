@@ -32,7 +32,7 @@
       "title": "Regex Filter",
       "description": "Only proxies whose names match the regex are available in this group.",
       "placeholder": "Enter a regex expression",
-      "helper": "Matched proxies remain visible, and auto-select groups only choose from the matched proxies after delay checks."
+      "helper": "Saving reloads the core so automatic groups test and switch only among matching proxies."
     },
     "tooltips": {
       "locate": "Aktueller Knoten",

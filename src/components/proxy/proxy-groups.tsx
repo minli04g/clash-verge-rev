@@ -42,7 +42,6 @@ import {
   ProxyGroupNavigator,
 } from './proxy-group-navigator'
 import { ProxyRender } from './proxy-render'
-import { buildRegexRuleState } from './use-filter-sort'
 import {
   PROXY_GROUP_HEADER_SENSORS,
   useProxyGroupHeaderLayout,
@@ -103,7 +102,6 @@ function useProxyRenderState(
   )
 
   const timeout = verge?.default_latency_timeout || 10000
-  const { handleProxyGroupChange } = useProxySelection({ onSuccess: onProxies })
 
   const handleCheckAll = useStableCallback(
     useLockFn(async (groupName: string) => {
@@ -112,11 +110,6 @@ function useProxyRenderState(
       const group =
         proxyView?.groups.find(({ name }) => name === groupName) ??
         (proxyView?.global?.name === groupName ? proxyView.global : undefined)
-      const headState = renderList.find(
-        (item) =>
-          (item.type === 0 || item.type === 1) && item.group.name === groupName,
-      )?.headState
-      const regexRule = buildRegexRuleState(headState?.regexFilter)
       const occurrences =
         proxyView && group
           ? group.members.map((member, memberIndex) => ({
@@ -124,15 +117,21 @@ function useProxyRenderState(
               member: resolveMember(proxyView, member),
             }))
           : []
+      const visibleNames = new Set(
+        renderList
+          .filter((item) => item.group.name === groupName)
+          .flatMap((item) =>
+            item.type === 2
+              ? [item.member!.member.ref.name]
+              : item.type === 4
+                ? item.memberCol!.map(({ member }) => member.ref.name)
+                : [],
+          ),
+      )
       const interactable = occurrences
         .map(({ member }) => member)
         .filter(isInteractableMember)
-        .filter(
-          (member) =>
-            !regexRule.hasRule ||
-            !regexRule.isValid ||
-            regexRule.matcher(member.ref.name),
-        )
+        .filter((member) => visibleNames.has(member.ref.name))
 
       debugLog(`[ProxyGroups] 找到代理数量: ${interactable.length}`)
 
@@ -145,23 +144,6 @@ function useProxyRenderState(
       } catch (error) {
         console.error(`[ProxyGroups] 延迟测试出错，组: ${groupName}`, error)
       } finally {
-        if (
-          group &&
-          regexRule.hasRule &&
-          regexRule.isValid &&
-          ['URLTest', 'Fallback'].includes(group.type)
-        ) {
-          const bestMember = interactable
-            .map((member) => ({
-              member,
-              delay: delayManager.getDelayFix(member, groupName),
-            }))
-            .filter(({ delay }) => delay > 0 && delay < Math.max(timeout, 1e5))
-            .sort((left, right) => left.delay - right.delay)[0]?.member
-          if (bestMember && group.now !== bestMember.ref.name) {
-            handleProxyGroupChange(group, { name: bestMember.ref.name })
-          }
-        }
         onProxies()
       }
     }),

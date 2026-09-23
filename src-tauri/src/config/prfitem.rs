@@ -10,6 +10,7 @@ use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::fs;
 // TODO, use other re-export
@@ -47,6 +48,9 @@ pub struct PrfItem {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected: Option<Vec<PrfSelected>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regex_filters: Option<HashMap<String, String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<PrfExtra>,
@@ -218,6 +222,7 @@ impl PrfItem {
             file: Some(file),
             url: None,
             selected: None,
+            regex_filters: None,
             extra: None,
             option: Some(PrfOption {
                 update_interval,
@@ -397,6 +402,7 @@ impl PrfItem {
             file: Some(file),
             url: Some(url.as_str().into()),
             selected: None,
+            regex_filters: None,
             extra,
             option: Some(PrfOption {
                 update_interval,

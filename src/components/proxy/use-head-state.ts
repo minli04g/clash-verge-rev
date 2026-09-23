@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 
 import { useProfiles } from '@/hooks/use-profiles'
+import { setProxyGroupRegex } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
 
 import { ProxySortType } from './use-filter-sort'
 
@@ -20,6 +22,7 @@ export interface HeadState {
 type HeadStateStorage = Record<string, Record<string, HeadState>>
 
 const HEAD_STATE_KEY = 'proxy-head-state'
+const EMPTY_REGEX_FILTERS: Record<string, string> = {}
 export const DEFAULT_STATE: HeadState = {
   open: false,
   showType: true,
@@ -58,20 +61,36 @@ function headStateReducer(
 
 function normalizeHeadStates(
   payload: Record<string, Partial<HeadState>>,
+  regexFilters: Record<string, string>,
 ): Record<string, HeadState> {
   return Object.fromEntries(
-    Object.entries(payload).map(([groupName, value]) => [
+    Array.from(
+      new Set([...Object.keys(payload), ...Object.keys(regexFilters)]),
+    ).map((groupName) => [
       groupName,
-      { ...DEFAULT_STATE, ...value },
+      {
+        ...DEFAULT_STATE,
+        ...payload[groupName],
+        regexFilter: regexFilters[groupName] ?? '',
+      },
     ]),
   )
 }
 
 export function useHeadStateNew() {
-  const { profiles } = useProfiles()
+  const { profiles, mutateProfiles } = useProfiles()
   const current = profiles?.current || ''
+  const regexFilters = useMemo(
+    () =>
+      profiles?.items?.find((item) => item.uid === current)?.regex_filters ??
+      EMPTY_REGEX_FILTERS,
+    [current, profiles?.items],
+  )
 
   const [state, dispatch] = useReducer(headStateReducer, {})
+  const migratedProfilesRef = useRef(new Set<string>())
+  const currentRef = useRef(current)
+  currentRef.current = current
 
   useEffect(() => {
     try {
@@ -82,14 +101,56 @@ export function useHeadStateNew() {
       const value = data[current] || {}
 
       if (value && typeof value === 'object') {
-        dispatch({ type: 'replace', payload: normalizeHeadStates(value) })
+        dispatch({
+          type: 'replace',
+          payload: normalizeHeadStates(value, regexFilters),
+        })
+        if (current && !migratedProfilesRef.current.has(current)) {
+          migratedProfilesRef.current.add(current)
+          const legacy = Object.entries(value).filter(
+            ([name, saved]) =>
+              saved.regexFilter?.trim() && regexFilters[name] === undefined,
+          )
+          if (legacy.length > 0) {
+            void (async () => {
+              for (const [name, saved] of legacy) {
+                try {
+                  const outcome = await setProxyGroupRegex(
+                    current,
+                    name,
+                    saved.regexFilter,
+                  )
+                  if (outcome.status === 'valid') continue
+                  showNotice.error(
+                    outcome.status === 'invalid'
+                      ? outcome.message
+                      : outcome.status,
+                  )
+                } catch (error) {
+                  showNotice.error(error)
+                }
+                if (currentRef.current === current) {
+                  dispatch({
+                    type: 'update',
+                    groupName: name,
+                    patch: { regexFilter: '' },
+                  })
+                }
+              }
+              await mutateProfiles()
+            })()
+          }
+        }
       } else {
         dispatch({ type: 'reset' })
       }
     } catch {
-      dispatch({ type: 'reset' })
+      dispatch({
+        type: 'replace',
+        payload: normalizeHeadStates({}, regexFilters),
+      })
     }
-  }, [current])
+  }, [current, mutateProfiles, regexFilters])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -111,9 +172,26 @@ export function useHeadStateNew() {
 
   const setHeadState = useCallback(
     (groupName: string, obj: Partial<HeadState>) => {
+      if (obj.regexFilter !== undefined) {
+        void setProxyGroupRegex(current, groupName, obj.regexFilter)
+          .then((outcome) => {
+            if (outcome.status !== 'valid') {
+              showNotice.error(
+                outcome.status === 'invalid' ? outcome.message : outcome.status,
+              )
+              return
+            }
+            if (currentRef.current === current) {
+              dispatch({ type: 'update', groupName, patch: obj })
+            }
+            void mutateProfiles()
+          })
+          .catch((error) => showNotice.error(error))
+        return
+      }
       dispatch({ type: 'update', groupName, patch: obj })
     },
-    [],
+    [current, mutateProfiles],
   )
 
   return [state, setHeadState] as const

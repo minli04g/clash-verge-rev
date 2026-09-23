@@ -22,6 +22,7 @@ import { isValidUrl } from '@/utils/network'
 
 import { BaseSearchBox, type SearchState } from '../base'
 
+import { ProxyRegexFilter } from './proxy-regex-filter'
 import type { ProxySortType } from './use-filter-sort'
 import type { HeadState } from './use-head-state'
 
@@ -185,6 +186,11 @@ export const ProxyGroupTools = memo(function ProxyGroupTools(props: Props) {
       >
         <NetworkCheckRounded fontSize="inherit" />
       </IconButton>
+
+      <ProxyRegexFilter
+        value={headState.regexFilter}
+        onApply={(regexFilter) => onHeadState({ regexFilter })}
+      />
 
       <IconButton
         size="small"

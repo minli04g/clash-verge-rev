@@ -79,6 +79,18 @@ export async function patchProfile(
   return invoke<void>('patch_profile', { index, profile })
 }
 
+export async function setProxyGroupRegex(
+  profileUid: string,
+  groupName: string,
+  regex: string,
+) {
+  return invoke<ValidationOutcome>('set_proxy_group_regex', {
+    profileUid,
+    groupName,
+    regex,
+  })
+}
+
 export async function getClashInfo() {
   return invoke<IClashInfo | null>('get_clash_info')
 }

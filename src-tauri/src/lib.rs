@@ -190,6 +190,7 @@ mod app_init {
             cmd::patch_profiles_config,
             cmd::view_profile,
             cmd::patch_profile,
+            cmd::set_proxy_group_regex,
             cmd::create_profile,
             cmd::import_profile,
             cmd::reorder_profile,

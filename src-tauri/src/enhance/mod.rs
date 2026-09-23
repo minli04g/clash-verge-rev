@@ -24,6 +24,7 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clash_verge_logging::{Type, logging};
 use parking_lot::Mutex;
+use regex::RegexBuilder;
 use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
 use std::collections::{HashMap, HashSet};
@@ -784,6 +785,71 @@ fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
     config
 }
 
+fn apply_proxy_group_regex(mut config: Mapping, filters: Option<&HashMap<String, String>>) -> Result<Mapping> {
+    let Some(filters) = filters else {
+        return Ok(config);
+    };
+    let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") else {
+        return Ok(config);
+    };
+
+    for group in groups {
+        let Some(group) = group.as_mapping_mut() else {
+            continue;
+        };
+        let Some(name) = group.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(rule) = filters
+            .get(name)
+            .map(|rule| rule.trim())
+            .filter(|rule| !rule.is_empty())
+        else {
+            continue;
+        };
+        let matcher = RegexBuilder::new(rule)
+            .case_insensitive(true)
+            .build()
+            .with_context(|| format!("invalid regex filter for proxy group {name}"))?;
+
+        if let Some(Value::Sequence(proxies)) = group.get_mut("proxies") {
+            proxies.retain(|proxy| proxy.as_str().is_none_or(|name| matcher.is_match(name)));
+        }
+        // Mihomo applies `filter` to provider and include-all members, but not explicit `proxies`.
+        group.insert("filter".into(), format!("(?i:{rule})").into());
+    }
+    Ok(config)
+}
+
+#[cfg(test)]
+mod proxy_group_regex_tests {
+    use super::{Mapping, apply_proxy_group_regex};
+    use smartstring::alias::String;
+    use std::collections::HashMap;
+
+    #[test]
+    fn restricts_explicit_and_provider_members_in_the_runtime_config() {
+        let config: Mapping = serde_yaml_ng::from_str(
+            "proxy-groups:\n  - name: Auto\n    type: url-test\n    proxies: [HK-A, US-A]\n    use: [provider]\n  - name: Other\n    type: select\n    proxies: [US-A]\n",
+        )
+        .unwrap();
+        let filters = HashMap::from([(String::from("Auto"), String::from("^HK"))]);
+        let result = apply_proxy_group_regex(config, Some(&filters)).unwrap();
+        let groups = result.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let auto = groups[0].as_mapping().unwrap();
+        let other = groups[1].as_mapping().unwrap();
+
+        assert_eq!(auto.get("proxies").unwrap().as_sequence().unwrap().len(), 1);
+        assert_eq!(
+            auto.get("proxies").unwrap().as_sequence().unwrap()[0].as_str(),
+            Some("HK-A")
+        );
+        assert_eq!(auto.get("filter").unwrap().as_str(), Some("(?i:^HK)"));
+        assert!(other.get("filter").is_none());
+        assert_eq!(other.get("proxies").unwrap().as_sequence().unwrap().len(), 1);
+    }
+}
+
 /// fake-ip + IPv6 缺少 `fake-ip-range6` 时补默认值，否则 AAAA 无法解析（#7373）。
 fn ensure_fake_ip_range6(dns: &mut Mapping) {
     use serde_yaml_ng::Value;
@@ -964,6 +1030,11 @@ pub async fn enhance(
     let config = ensure_lan_bind_address(config);
 
     let config = cleanup_proxy_groups(config);
+    let regex_filters = profiles
+        .get_item(profile_uid)
+        .ok()
+        .and_then(|item| item.regex_filters.as_ref());
+    let config = apply_proxy_group_regex(config, regex_filters)?;
     let config = use_sort(config);
 
     let mut exists_keys_set = HashSet::new();

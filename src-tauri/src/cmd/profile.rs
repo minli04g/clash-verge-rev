@@ -17,9 +17,11 @@ use crate::{
 };
 use clash_verge_draft::{Draft, SharedDraft};
 use clash_verge_logging::{Type, logging, logging_error};
+use regex::RegexBuilder;
 use scopeguard::defer;
 use smartstring::alias::String;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri_plugin_mihomo::models::ProxyType;
 
 static CURRENT_SWITCHING_PROFILE: AtomicBool = AtomicBool::new(false);
 
@@ -381,6 +383,107 @@ pub async fn patch_profile(index: String, profile: PrfItem) -> CmdResult {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn set_proxy_group_regex(
+    profile_uid: String,
+    group_name: String,
+    regex: String,
+) -> CmdResult<ValidationOutcome> {
+    let rule = regex.trim();
+    if !rule.is_empty() {
+        RegexBuilder::new(rule)
+            .case_insensitive(true)
+            .build()
+            .with_error_code("PROXY_REGEX_INVALID")?;
+    }
+    let runtime = Config::runtime().await.latest_arc();
+    let group = runtime
+        .config
+        .as_ref()
+        .and_then(|config| config.get("proxy-groups"))
+        .and_then(|groups| groups.as_sequence())
+        .and_then(|groups| {
+            groups.iter().find(|group| {
+                group
+                    .as_mapping()
+                    .and_then(|group| group.get("name"))
+                    .and_then(|name| name.as_str())
+                    == Some(group_name.as_str())
+            })
+        });
+    if !rule.is_empty() && group.is_none() {
+        return Err(coded_error(
+            "PROXY_REGEX_GROUP_NOT_FOUND",
+            "proxy group is not in the runtime config",
+        ));
+    }
+    let auto_group = group
+        .and_then(|group| group.get("type"))
+        .and_then(|kind| kind.as_str())
+        .is_some_and(|kind| matches!(kind, "url-test" | "fallback"));
+
+    let _profile_write_guard = PROFILE_WRITE_LOCK.lock().await;
+    let profiles = Config::profiles().await;
+    let group_name_for_update = group_name.clone();
+    let result = profiles
+        .with_data_modify(|mut candidate| async move {
+            let original = candidate.clone();
+            let current = candidate
+                .current
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("no current profile"))?;
+            if current != profile_uid.as_str() {
+                return Err(anyhow::anyhow!("current profile changed while saving the regex filter"));
+            }
+            let item = candidate
+                .items
+                .as_mut()
+                .and_then(|items| items.iter_mut().find(|item| item.uid.as_deref() == Some(current)))
+                .ok_or_else(|| anyhow::anyhow!("current profile not found"))?;
+            let filters = item.regex_filters.get_or_insert_with(Default::default);
+            if rule.is_empty() {
+                filters.remove(&group_name_for_update);
+            } else {
+                filters.insert(group_name_for_update.clone(), rule.into());
+            }
+            if auto_group {
+                if let Some(selected) = item.selected.as_mut() {
+                    selected.retain(|entry| entry.name.as_ref() != Some(&group_name_for_update));
+                }
+            }
+
+            match CoreManager::global()
+                .update_config_forced_with_profiles(&candidate, &original)
+                .await?
+            {
+                Ok(guard) => Ok((candidate, Ok(guard))),
+                Err(outcome) => Ok((original, Err(outcome))),
+            }
+        })
+        .await
+        .with_error_code("PROXY_REGEX_UPDATE_FAILED")?;
+    match result {
+        Ok(guard) => {
+            if let Ok(proxies) = handle::Handle::mihomo().get_proxies().await
+                && let Some(group) = proxies.proxies.get(group_name.as_str())
+                && matches!(&group.proxy_type, ProxyType::URLTest | ProxyType::Fallback)
+                && let Err(error) = handle::Handle::mihomo().unfixed_proxy(group_name.as_str()).await
+            {
+                logging!(
+                    warn,
+                    Type::Cmd,
+                    "Failed to clear fixed selection for {group_name}: {error:#}"
+                );
+            }
+            profiles::activate_selected_nodes();
+            drop(guard);
+            handle::Handle::refresh_clash();
+            Ok(ValidationOutcome::Valid)
+        }
+        Err(outcome) => Ok(outcome),
+    }
 }
 
 #[tauri::command]
