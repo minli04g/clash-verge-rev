@@ -2,9 +2,9 @@ import {
   AccessTimeRounded,
   MyLocationRounded,
   NetworkCheckRounded,
-  FilterAltRounded,
-  FilterAltOffRounded,
   RuleRounded,
+  SearchOffRounded,
+  SearchRounded,
   VisibilityRounded,
   VisibilityOffRounded,
   WifiTetheringRounded,
@@ -12,14 +12,23 @@ import {
   SortByAlphaRounded,
   SortRounded,
 } from '@mui/icons-material'
-import { Box, IconButton, Menu, SxProps, TextField, Typography } from '@mui/material'
+import {
+  Box,
+  IconButton,
+  Menu,
+  TextField,
+  Typography,
+  type SxProps,
+} from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BaseSearchBox } from '@/components/base'
 import { useVerge } from '@/hooks/use-verge'
 import delayManager from '@/services/delay'
+import { showNotice } from '@/services/notice-service'
 import { debugLog } from '@/utils/debug'
+import { isValidUrl } from '@/utils/network'
 
 import { buildRegexRuleState, type ProxySortType } from './use-filter-sort'
 import type { HeadState } from './use-head-state'
@@ -58,7 +67,7 @@ export const ProxyHead = ({
 
   const { t } = useTranslation()
   const [autoFocus, setAutoFocus] = useState(false)
-  const [regexMenuAnchor, setRegexMenuAnchor] = useState<null | HTMLElement>(
+  const [regexMenuAnchor, setRegexMenuAnchor] = useState<HTMLElement | null>(
     null,
   )
   const regexRuleState = useMemo(
@@ -102,6 +111,10 @@ export const ProxyHead = ({
           if (testUrl?.trim() && textState !== 'filter') {
             debugLog(`[ProxyHead] 使用自定义测试URL: ${testUrl}`)
             onHeadState({ textState: 'url' })
+          }
+          if (testUrl?.trim() && !isValidUrl(testUrl)) {
+            showNotice.warning('proxies.feedback.warnings.invalidTestUrl')
+            return
           }
           onCheckDelay()
         }}
@@ -173,11 +186,7 @@ export const ProxyHead = ({
           onHeadState({ textState: textState === 'filter' ? null : 'filter' })
         }
       >
-        {textState === 'filter' ? (
-          <FilterAltRounded />
-        ) : (
-          <FilterAltOffRounded />
-        )}
+        {textState === 'filter' ? <SearchOffRounded /> : <SearchRounded />}
       </IconButton>
 
       {textState === 'filter' && (
@@ -221,14 +230,7 @@ export const ProxyHead = ({
         anchorEl={regexMenuAnchor}
         open={Boolean(regexMenuAnchor)}
         onClose={() => setRegexMenuAnchor(null)}
-        slotProps={{
-          paper: {
-            sx: {
-              width: 360,
-              p: 1.5,
-            },
-          },
-        }}
+        slotProps={{ paper: { sx: { width: 360, p: 1.5 } } }}
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Typography variant="subtitle2">

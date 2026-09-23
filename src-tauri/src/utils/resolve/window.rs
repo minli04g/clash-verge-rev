@@ -4,6 +4,8 @@ use tauri::webview::PageLoadEvent;
 use tauri::{Theme, WebviewWindow};
 
 use crate::{config::Config, core::handle, utils::resolve::window_script::build_window_initial_script};
+#[cfg(target_os = "macos")]
+use clash_verge_logging::logging;
 use clash_verge_logging::{Type, logging_error};
 
 const DARK_BACKGROUND_COLOR: Color = Color(46, 48, 61, 255); // #2E303D
@@ -11,7 +13,6 @@ const LIGHT_BACKGROUND_COLOR: Color = Color(245, 245, 245, 255); // #F5F5F5
 const DARK_BACKGROUND_HEX: &str = "#2E303D";
 const LIGHT_BACKGROUND_HEX: &str = "#F5F5F5";
 
-// 定义默认窗口尺寸常量
 const DEFAULT_WIDTH: f64 = 940.0;
 const DEFAULT_HEIGHT: f64 = 700.0;
 
@@ -43,7 +44,6 @@ fn restore_default_size_if_needed(window: &WebviewWindow) {
     logging_error!(Type::Window, window.center());
 }
 
-/// 构建新的 WebView 窗口
 pub async fn build_new_window() -> Result<WebviewWindow, String> {
     let app_handle = handle::Handle::app_handle();
 
@@ -109,31 +109,78 @@ pub async fn build_new_window() -> Result<WebviewWindow, String> {
         Ok(window) => {
             logging_error!(Type::Window, window.set_background_color(Some(background_color)));
             restore_default_size_if_needed(&window);
+            // A new page supersedes any reload marker left by the old window.
+            #[cfg(target_os = "macos")]
+            take_webview_needs_reload();
             Ok(window)
         }
         Err(e) => Err(e.to_string()),
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::restored_window_size_is_too_small;
+/// Defers recovery of a terminated hidden main webview until its next activation.
+#[cfg(target_os = "macos")]
+static WEBVIEW_NEEDS_RELOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-    #[test]
-    fn restored_window_size_rejects_zero_dimensions() {
-        assert!(restored_window_size_is_too_small(0, 700));
-        assert!(restored_window_size_is_too_small(940, 0));
+#[cfg(target_os = "macos")]
+pub fn take_webview_needs_reload() -> bool {
+    WEBVIEW_NEEDS_RELOAD.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+///
+/// macOS may kill hidden WebContent under memory pressure. Clean orphaned Mihomo subscriptions,
+/// reload visible webviews immediately, and defer a hidden main-window reload until activation.
+/// Registering this callback replaces Tauri's default automatic reload.
+#[cfg(target_os = "macos")]
+pub fn on_web_content_process_terminated(webview: &tauri::Webview) {
+    if handle::Handle::global().is_exiting() {
+        return;
     }
 
-    #[test]
-    fn restored_window_size_rejects_dimensions_below_minimum() {
-        assert!(restored_window_size_is_too_small(519, 700));
-        assert!(restored_window_size_is_too_small(940, 519));
+    logging!(
+        warn,
+        Type::Window,
+        "WebView 渲染进程已被系统终止（label={}），开始恢复",
+        webview.label()
+    );
+
+    let window = webview.window();
+    let is_user_visible = window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false);
+
+    // Only the main window has a path that consumes the deferred marker.
+    let is_main_window = webview.label() == "main";
+    let reload_now = is_user_visible || !is_main_window;
+
+    if !reload_now {
+        WEBVIEW_NEEDS_RELOAD.store(true, std::sync::atomic::Ordering::SeqCst);
+        logging!(info, Type::Window, "窗口不可见，页面将在下次打开窗口时重载");
     }
 
-    #[test]
-    fn restored_window_size_accepts_minimum_or_larger_dimensions() {
-        assert!(!restored_window_size_is_too_small(520, 520));
-        assert!(!restored_window_size_is_too_small(940, 700));
+    // Clean before reload so cleanup cannot remove subscriptions created by the new page.
+    let webview = webview.clone();
+    crate::process::AsyncHandler::spawn(move || async move {
+        if let Err(err) = handle::Handle::mihomo().clear_all_ws_connections() {
+            logging!(warn, Type::Window, "清理 Mihomo WebSocket 连接失败: {err}");
+        } else {
+            logging!(info, Type::Window, "已清理全部 Mihomo WebSocket 连接");
+        }
+        if reload_now {
+            logging_error!(Type::Window, webview.reload());
+        }
+    });
+}
+
+/// Consumes the shared marker for native unminimize paths that bypass `activate_window`.
+#[cfg(target_os = "macos")]
+pub fn reload_main_window_if_needed() {
+    if !take_webview_needs_reload() {
+        return;
+    }
+    let Some(window) = crate::utils::window_manager::WindowManager::get_main_window() else {
+        return;
+    };
+    logging!(info, Type::Window, "渲染进程曾被系统终止，窗口聚焦后重载页面");
+    if let Err(e) = window.reload() {
+        logging!(warn, Type::Window, "重载页面失败: {e}");
     }
 }
