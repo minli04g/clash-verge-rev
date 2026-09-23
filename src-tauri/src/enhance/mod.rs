@@ -822,6 +822,7 @@ fn apply_proxy_group_regex(mut config: Mapping, filters: Option<&HashMap<String,
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "test assertions require the expected config fields")]
 mod proxy_group_regex_tests {
     use super::{Mapping, apply_proxy_group_regex};
     use smartstring::alias::String;

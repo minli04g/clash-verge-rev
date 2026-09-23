@@ -448,10 +448,8 @@ pub async fn set_proxy_group_regex(
             } else {
                 filters.insert(group_name_for_update.clone(), rule.into());
             }
-            if auto_group {
-                if let Some(selected) = item.selected.as_mut() {
-                    selected.retain(|entry| entry.name.as_ref() != Some(&group_name_for_update));
-                }
+            if auto_group && let Some(selected) = item.selected.as_mut() {
+                selected.retain(|entry| entry.name.as_ref() != Some(&group_name_for_update));
             }
 
             match CoreManager::global()
