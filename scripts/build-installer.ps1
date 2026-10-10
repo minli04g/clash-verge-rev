@@ -7,6 +7,11 @@ $buildConfig = [System.IO.Path]::GetTempFileName()
 Push-Location (Split-Path $PSScriptRoot -Parent)
 
 try {
+    pnpm run prebuild
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Installer resource preparation failed.'
+    }
+
     Set-Content -LiteralPath $buildConfig -Value '{"bundle":{"createUpdaterArtifacts":false}}' -Encoding ASCII
     pnpm build --config $buildConfig
 

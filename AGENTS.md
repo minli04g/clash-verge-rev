@@ -64,3 +64,46 @@ the ownership evidence the AI-slop review evaluates (see
 Describe three things, briefly: the problem (with issue link), why this approach
 solves it, and what changed. See
 [`PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+
+## Fork Sync and Windows Installer Workflow
+
+Use this order when updating the working branch and building a Windows installer.
+Remote names in this checkout are unusual: `orig` is the user's fork
+(`minli04g/clash-verge-rev`), and `origin` is upstream
+(`clash-verge-rev/clash-verge-rev`). Verify their URLs before syncing.
+
+1. Record the current working branch and inspect local changes. Preserve all
+   uncommitted work before switching branches; never discard it to make a merge
+   succeed.
+2. Sync the fork's remote `dev` from upstream `dev` first:
+   `gh repo sync minli04g/clash-verge-rev --branch dev --source clash-verge-rev/clash-verge-rev`.
+   Do not use `--force`; investigate divergence without overwriting fork commits.
+3. Fetch both remotes, switch to local `dev`, and run
+   `git pull --ff-only orig dev`. Do not mistake pulling `dev` while on the
+   working branch for updating local `dev`.
+4. Switch back to the recorded working branch and run `git merge dev`. Resolve
+   conflicts while preserving the working branch's features and upstream changes.
+   Run relevant checks and finish the merge commit before building. Do not build
+   from `dev` when the requested installer must include the working branch.
+5. Run `scripts/build-installer.ps1`. It must explicitly run `pnpm run prebuild`
+   successfully before `pnpm build`; do not assume the package manager runs the
+   `prebuild` script automatically. Resource preparation failure must stop the
+   build. Use the script's temporary updater-artifact configuration for local
+   installers rather than changing the tracked Tauri configuration.
+6. Verify the service bundle against the `clash_verge_service_ipc` dependency in
+   `src-tauri/Cargo.toml`. `scripts/service-release.mjs` resolves the matching
+   release. Existing files in `src-tauri/resources` are not evidence that their
+   versions are current. Update the service, installer helper, and uninstaller
+   helper together through prebuild.
+7. After packaging succeeds, extract the generated NSIS installer into a fresh
+   temporary directory and compare SHA-256 hashes of all three bundled service
+   executables with the matching release resources. Confirm the installer path,
+   size, and build result before handing it over. Packaging success alone does
+   not verify service compatibility. State separately whether installation and
+   service startup were actually tested.
+
+Previous failure: after merging `dev`, the client required service `2.7.6`, but
+the installer contained stale `2.7.5` resource binaries because prebuild was
+skipped. Reinstalling from that same installer could not fix the mismatch. Never
+hard-code these historical versions as the expected version; derive it from the
+current dependency and verify the files inside the final installer.
