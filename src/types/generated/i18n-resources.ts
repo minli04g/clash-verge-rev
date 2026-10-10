@@ -227,6 +227,7 @@ export interface TranslationResources {
           }
           locationRefusedMessage: string
           message: string
+          notAutoStartedMessage: string
           reinstall: string
           repair: string
           success: string
@@ -827,6 +828,7 @@ export interface TranslationResources {
             stopFailed: string
           }
           clashService: {
+            coreAlreadyRunning: string
             installFailed: string
             reinstallFailed: string
             repairFailed: string
@@ -967,9 +969,12 @@ export interface TranslationResources {
           messages: {
             automaticFallback: string
             automaticFallbackFailed: string
+            duplicatePort: string
+            invalidPort: string
             portInUse: string
             portTooHigh: string
             portTooLow: string
+            runningPort: string
             saved: string
             saveFailed: string
           }
@@ -1471,13 +1476,10 @@ export interface TranslationResources {
         validation: {
           config: {
             bootFailed: string
-            coreChangeFailed: string
             failed: string
             processTerminated: string
           }
           merge: {
-            generalError: string
-            keyError: string
             mappingError: string
             syntaxError: string
           }
@@ -1488,8 +1490,6 @@ export interface TranslationResources {
             syntaxError: string
           }
           yaml: {
-            generalError: string
-            keyError: string
             mappingError: string
             readError: string
             syntaxError: string

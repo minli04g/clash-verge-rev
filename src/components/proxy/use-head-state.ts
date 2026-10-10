@@ -3,6 +3,10 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import { useProfiles } from '@/hooks/use-profiles'
 import { setProxyGroupRegex } from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
+import {
+  profileTestUrls,
+  commitProfileTestUrl,
+} from '@/services/proxy-test-url'
 
 import { ProxySortType } from './use-filter-sort'
 
@@ -37,22 +41,60 @@ export const DEFAULT_STATE: HeadState = {
 }
 
 type HeadStateAction =
-  | { type: 'reset' }
-  | { type: 'replace'; payload: Record<string, HeadState> }
+  | { type: 'reset'; profile: string }
+  | { type: 'replace'; profile: string; payload: Record<string, HeadState> }
   | { type: 'update'; groupName: string; patch: Partial<HeadState> }
+  | {
+      type: 'urls'
+      urls: Record<string, string>
+      regexFilters: Record<string, string>
+    }
+
+interface LoadedHeadState {
+  profile: string | null
+  heads: Record<string, HeadState>
+}
 
 function headStateReducer(
-  state: Record<string, HeadState>,
+  state: LoadedHeadState,
   action: HeadStateAction,
-): Record<string, HeadState> {
+): LoadedHeadState {
   switch (action.type) {
     case 'reset':
-      return {}
+      return { profile: action.profile, heads: {} }
     case 'replace':
-      return action.payload
+      return { profile: action.profile, heads: action.payload }
+    case 'urls': {
+      let heads = state.heads
+      for (const [name, testUrl] of Object.entries(action.urls)) {
+        if (heads[name]?.testUrl === testUrl) continue
+        heads = {
+          ...heads,
+          [name]: { ...DEFAULT_STATE, ...heads[name], testUrl },
+        }
+      }
+      for (const name of new Set([
+        ...Object.keys(heads),
+        ...Object.keys(action.regexFilters),
+      ])) {
+        const regexFilter = action.regexFilters[name] ?? ''
+        if (heads[name]?.regexFilter === regexFilter) continue
+        heads = {
+          ...heads,
+          [name]: { ...DEFAULT_STATE, ...heads[name], regexFilter },
+        }
+      }
+      return heads === state.heads ? state : { ...state, heads }
+    }
     case 'update': {
-      const prev = state[action.groupName] || DEFAULT_STATE
-      return { ...state, [action.groupName]: { ...prev, ...action.patch } }
+      const prev = state.heads[action.groupName] || DEFAULT_STATE
+      return {
+        ...state,
+        heads: {
+          ...state.heads,
+          [action.groupName]: { ...prev, ...action.patch },
+        },
+      }
     }
     default:
       return state
@@ -78,7 +120,7 @@ function normalizeHeadStates(
 }
 
 export function useHeadStateNew() {
-  const { profiles, mutateProfiles } = useProfiles()
+  const { profiles, mutateProfiles, current: profile } = useProfiles()
   const current = profiles?.current || ''
   const regexFilters = useMemo(
     () =>
@@ -87,22 +129,34 @@ export function useHeadStateNew() {
     [current, profiles?.items],
   )
 
-  const [state, dispatch] = useReducer(headStateReducer, {})
+  const [{ profile: loadedProfile, heads: state }, dispatch] = useReducer(
+    headStateReducer,
+    { profile: null, heads: {} },
+  )
   const migratedProfilesRef = useRef(new Set<string>())
   const currentRef = useRef(current)
   currentRef.current = current
 
   useEffect(() => {
+    const urls = profile ? profileTestUrls(profile) : {}
+    if (loadedProfile === current) {
+      dispatch({ type: 'urls', urls, regexFilters })
+      return
+    }
     try {
       const data = JSON.parse(
-        localStorage.getItem(HEAD_STATE_KEY)!,
+        localStorage.getItem(HEAD_STATE_KEY) || '{}',
       ) as HeadStateStorage
 
-      const value = data[current] || {}
+      const value = data?.[current] || {}
+      for (const [name, testUrl] of Object.entries(urls)) {
+        value[name] = { ...DEFAULT_STATE, ...value[name], testUrl }
+      }
 
       if (value && typeof value === 'object') {
         dispatch({
           type: 'replace',
+          profile: current,
           payload: normalizeHeadStates(value, regexFilters),
         })
         if (current && !migratedProfilesRef.current.has(current)) {
@@ -142,17 +196,19 @@ export function useHeadStateNew() {
           }
         }
       } else {
-        dispatch({ type: 'reset' })
+        dispatch({ type: 'reset', profile: current })
       }
     } catch {
       dispatch({
         type: 'replace',
+        profile: current,
         payload: normalizeHeadStates({}, regexFilters),
       })
     }
-  }, [current, mutateProfiles, regexFilters])
+  }, [current, loadedProfile, profile, mutateProfiles, regexFilters])
 
   useEffect(() => {
+    if (loadedProfile !== current) return
     const timer = setTimeout(() => {
       try {
         const item = localStorage.getItem(HEAD_STATE_KEY)
@@ -168,7 +224,7 @@ export function useHeadStateNew() {
     })
 
     return () => clearTimeout(timer)
-  }, [state, current])
+  }, [state, current, loadedProfile])
 
   const setHeadState = useCallback(
     (groupName: string, obj: Partial<HeadState>) => {
@@ -190,6 +246,9 @@ export function useHeadStateNew() {
         return
       }
       dispatch({ type: 'update', groupName, patch: obj })
+      if (current && obj.testUrl !== undefined) {
+        void commitProfileTestUrl(current, groupName, obj.testUrl)
+      }
     },
     [current, mutateProfiles],
   )
